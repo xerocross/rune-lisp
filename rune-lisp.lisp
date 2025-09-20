@@ -1,4 +1,11 @@
 
+(defpackage :rune/hash
+  (:use :cl)                             ; inherit CL’s external symbols
+  (:export :hash-helper :define-hash-verb)) ; public API
+
+(in-package :rune/hash)
+
+
 (defun pop-rest (lst)
   (cdr lst))
 
@@ -14,6 +21,9 @@
     `(destructuring-bind ,pattern ,from
        ,@body)))
 
+(defmacro bind-values-of (ex &key into ((and-then body)))
+  `(multiple-value-bind ,into ,ex ,@body))
+
 (defmacro $ (lst)
   (let ((helper NIL))
   (setf helper (lambda (&rest body)
@@ -28,22 +38,42 @@
   `(funcall #'list-helper ,@argslist)))
 
 
+(defun hash-set (hasht &rest rest)
+  (>> ((key value) :from rest) (setf (gethash key hasht) value)))
+
+
+(defun hash-keys (ht)
+  (let ((out NIL))
+    (maphash (lambda (k _) (declare (ignore _))
+	       (push k out))
+	     ht)
+    out))
+
+
 
 (defun hash-helper (hasht message &rest rest)
   (let ((keyword (intern (string-upcase message) :keyword)))
      (case keyword
-       ((:set) (>> ((key value) :from rest) (setf (gethash key hasht) value)))
+       ((:set) (>> ((key value) :from rest) (hash-set hasht key value)))
+       ((:get) (>> ((key) :from rest) (gethash key hasht)))
+       ((:is) (hash-table-p hasht))
+       ((:keys) (hash-keys hasht))
+       ((:help) (list :set :get :is :keys :help))
        (otherwise "did not understand"))))
 
-  
-    
 
-(defun list-helper (lst message &rest body)
-   (let ((keyword (intern (string-upcase message) :keyword)))
-     (case keyword
-       ((:length) (length lst))
-       ((:len-at-least) (at-least-n-elements lst (first body)))
-       (otherwise "did not understand"))))
+
+
+(defun hash-helper2 (hasht message &rest rest)
+  (let ((keyword (intern (string-upcase message) :keyword))
+	(funcs (make-hash-table))
+	(func-obj NIL))
+    (setf (gethash :set funcs) (lambda (hasht rest) (>> ((key value) :from rest)
+							(hash-set hasht key value))))
+    (setf func-obj (gethash keyword funcs))
+    (if (not func-obj)
+	(format t "keyword ~s not understood" keyword)
+	(apply func-obj (list hasht rest)))))
 
 
 (defun $ (lst)
